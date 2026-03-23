@@ -13,6 +13,8 @@ namespace ULEZ.Systems
     /// </summary>
     public partial class ULEZPolicySystem : GameSystemBase, IDefaultSerializable
     {
+        private const int HoursPerDay = 24;
+
         public struct DistrictReportSnapshot
         {
             public Entity District;
@@ -29,6 +31,10 @@ namespace ULEZ.Systems
             public int LastDayCharges;
             public int LastDayRevenue;
             public float BaselineAverageTraffic;
+            public int CurrentHourIndex;
+            public int[] CurrentDayTrafficByHour;
+            public int[] LastDayTrafficByHour;
+            public float[] BaselineAverageTrafficByHour;
         }
 
         public struct SystemReportSnapshot
@@ -43,6 +49,9 @@ namespace ULEZ.Systems
             public int LifetimeCharges;
             public int LifetimeRevenue;
             public float ActiveBaselineAverageTraffic;
+            public int CurrentHourIndex;
+            public int[] CurrentDayTrafficByHour;
+            public int[] LastDayTrafficByHour;
         }
 
         private struct DistrictAnalytics
@@ -60,6 +69,9 @@ namespace ULEZ.Systems
             public int LastDayTraffic;
             public int LastDayCharges;
             public int LastDayRevenue;
+            public int[] BaselineHourlyTraffic;
+            public int[] CurrentDayTrafficByHour;
+            public int[] LastDayTrafficByHour;
         }
 
         private readonly HashSet<Entity> _ulezDistricts = new HashSet<Entity>();
@@ -193,7 +205,9 @@ namespace ULEZ.Systems
                 return;
 
             var analytics = EnsureAnalytics(district);
+            int hourIndex = GetCurrentHourIndex();
             analytics.CurrentDayTraffic++;
+            analytics.CurrentDayTrafficByHour[hourIndex]++;
             _districtAnalytics[district] = analytics;
         }
 
@@ -225,6 +239,7 @@ namespace ULEZ.Systems
                 }
 
                 var analytics = _districtAnalytics[district];
+                EnsureAnalyticsArrays(ref analytics);
                 bool isActive = _ulezDistricts.Contains(district);
                 bool hasActivity = analytics.CurrentDayTraffic > 0 || analytics.CurrentDayCharges > 0 || analytics.CurrentDayRevenue > 0;
                 if (!hasActivity)
@@ -233,11 +248,13 @@ namespace ULEZ.Systems
                 analytics.LastDayTraffic = analytics.CurrentDayTraffic;
                 analytics.LastDayCharges = analytics.CurrentDayCharges;
                 analytics.LastDayRevenue = analytics.CurrentDayRevenue;
+                CopyHourlyData(analytics.CurrentDayTrafficByHour, analytics.LastDayTrafficByHour);
 
                 if (analytics.ActivationDay < 0)
                 {
                     analytics.BaselineTraffic += analytics.CurrentDayTraffic;
                     analytics.BaselineDays++;
+                    AddHourlyData(analytics.BaselineHourlyTraffic, analytics.CurrentDayTrafficByHour);
                 }
                 else if (isActive)
                 {
@@ -250,6 +267,7 @@ namespace ULEZ.Systems
                 analytics.CurrentDayTraffic = 0;
                 analytics.CurrentDayCharges = 0;
                 analytics.CurrentDayRevenue = 0;
+                ClearHourlyData(analytics.CurrentDayTrafficByHour);
                 _districtAnalytics[district] = analytics;
                 changed = true;
             }
@@ -316,7 +334,12 @@ namespace ULEZ.Systems
 
         public SystemReportSnapshot GetSystemReport()
         {
-            SystemReportSnapshot report = default;
+            SystemReportSnapshot report = new SystemReportSnapshot
+            {
+                CurrentHourIndex = GetCurrentHourIndex(),
+                CurrentDayTrafficByHour = CreateHourlyBuckets(),
+                LastDayTrafficByHour = CreateHourlyBuckets()
+            };
             float baselineTotal = 0f;
             int baselineDistricts = 0;
 
@@ -328,6 +351,7 @@ namespace ULEZ.Systems
                     continue;
 
                 DistrictAnalytics analytics = pair.Value;
+                EnsureAnalyticsArrays(ref analytics);
                 report.TrackedDistricts++;
                 report.CurrentDayTraffic += analytics.CurrentDayTraffic;
                 report.CurrentDayCharges += analytics.CurrentDayCharges;
@@ -336,6 +360,8 @@ namespace ULEZ.Systems
                 report.LifetimeTraffic += analytics.BaselineTraffic + analytics.HistoricalTraffic + analytics.CurrentDayTraffic;
                 report.LifetimeCharges += analytics.HistoricalCharges + analytics.CurrentDayCharges;
                 report.LifetimeRevenue += analytics.HistoricalRevenue + analytics.CurrentDayRevenue;
+                AddHourlyData(report.CurrentDayTrafficByHour, analytics.CurrentDayTrafficByHour);
+                AddHourlyData(report.LastDayTrafficByHour, analytics.LastDayTrafficByHour);
 
                 if (analytics.BaselineDays > 0 && analytics.ActivationDay >= 0)
                 {
@@ -382,6 +408,15 @@ namespace ULEZ.Systems
                 writer.Write(pair.Value.HistoricalTraffic);
                 writer.Write(pair.Value.CurrentDayTraffic);
                 writer.Write(pair.Value.LastDayTraffic);
+            }
+
+            writer.Write(_districtAnalytics.Count);
+            foreach (var pair in _districtAnalytics)
+            {
+                writer.Write(pair.Key);
+                WriteHourlyArray(writer, pair.Value.BaselineHourlyTraffic);
+                WriteHourlyArray(writer, pair.Value.CurrentDayTrafficByHour);
+                WriteHourlyArray(writer, pair.Value.LastDayTrafficByHour);
             }
             writer.End(block);
         }
@@ -442,6 +477,23 @@ namespace ULEZ.Systems
                     reader.Read(out analytics.LastDayTraffic);
                     _districtAnalytics[district] = analytics;
                 }
+
+                reader.Read(out int hourlyAnalyticsCount);
+                for (int index = 0; index < hourlyAnalyticsCount; index++)
+                {
+                    reader.Read(out Entity district);
+                    if (district == Entity.Null)
+                    {
+                        SkipHourlyAnalyticsRecord(reader);
+                        continue;
+                    }
+
+                    DistrictAnalytics analytics = EnsureAnalytics(district);
+                    ReadHourlyArray(reader, analytics.BaselineHourlyTraffic);
+                    ReadHourlyArray(reader, analytics.CurrentDayTrafficByHour);
+                    ReadHourlyArray(reader, analytics.LastDayTrafficByHour);
+                    _districtAnalytics[district] = analytics;
+                }
             }
             catch
             {
@@ -462,11 +514,18 @@ namespace ULEZ.Systems
         private DistrictAnalytics EnsureAnalytics(Entity district)
         {
             if (_districtAnalytics.TryGetValue(district, out DistrictAnalytics analytics))
+            {
+                EnsureAnalyticsArrays(ref analytics);
+                _districtAnalytics[district] = analytics;
                 return analytics;
+            }
 
             analytics = new DistrictAnalytics
             {
-                ActivationDay = -1
+                ActivationDay = -1,
+                BaselineHourlyTraffic = CreateHourlyBuckets(),
+                CurrentDayTrafficByHour = CreateHourlyBuckets(),
+                LastDayTrafficByHour = CreateHourlyBuckets()
             };
             _districtAnalytics[district] = analytics;
             return analytics;
@@ -474,6 +533,7 @@ namespace ULEZ.Systems
 
         private DistrictReportSnapshot CreateSnapshot(Entity district, DistrictAnalytics analytics)
         {
+            EnsureAnalyticsArrays(ref analytics);
             float baselineAverageTraffic = 0f;
             if (analytics.BaselineDays > 0)
                 baselineAverageTraffic = (float)analytics.BaselineTraffic / analytics.BaselineDays;
@@ -493,13 +553,23 @@ namespace ULEZ.Systems
                 LastDayTraffic = analytics.LastDayTraffic,
                 LastDayCharges = analytics.LastDayCharges,
                 LastDayRevenue = analytics.LastDayRevenue,
-                BaselineAverageTraffic = baselineAverageTraffic
+                BaselineAverageTraffic = baselineAverageTraffic,
+                CurrentHourIndex = GetCurrentHourIndex(),
+                CurrentDayTrafficByHour = CloneHourlyData(analytics.CurrentDayTrafficByHour),
+                LastDayTrafficByHour = CloneHourlyData(analytics.LastDayTrafficByHour),
+                BaselineAverageTrafficByHour = CreateBaselineAverageHourlyData(analytics.BaselineHourlyTraffic, analytics.BaselineDays)
             };
         }
 
         private int GetCurrentDay()
         {
             return (int)(_simulationSystem.frameIndex / 262144u);
+        }
+
+        private int GetCurrentHourIndex()
+        {
+            uint frameOfDay = _simulationSystem.frameIndex % 262144u;
+            return (int)(frameOfDay * HoursPerDay / 262144u);
         }
 
         private bool IsDistrictEntityValid(Entity district)
@@ -526,6 +596,115 @@ namespace ULEZ.Systems
             reader.Read(out int _);
             reader.Read(out int _);
             reader.Read(out int _);
+        }
+
+        private static void SkipHourlyAnalyticsRecord<TReader>(TReader reader) where TReader : IReader
+        {
+            SkipHourlyArray(reader);
+            SkipHourlyArray(reader);
+            SkipHourlyArray(reader);
+        }
+
+        private static void EnsureAnalyticsArrays(ref DistrictAnalytics analytics)
+        {
+            analytics.BaselineHourlyTraffic ??= CreateHourlyBuckets();
+            analytics.CurrentDayTrafficByHour ??= CreateHourlyBuckets();
+            analytics.LastDayTrafficByHour ??= CreateHourlyBuckets();
+        }
+
+        private static int[] CreateHourlyBuckets()
+        {
+            return new int[HoursPerDay];
+        }
+
+        private static int[] CloneHourlyData(int[] source)
+        {
+            var copy = CreateHourlyBuckets();
+            if (source == null)
+                return copy;
+
+            int length = source.Length < HoursPerDay ? source.Length : HoursPerDay;
+            for (int index = 0; index < length; index++)
+                copy[index] = source[index];
+
+            return copy;
+        }
+
+        private static float[] CreateBaselineAverageHourlyData(int[] totals, int baselineDays)
+        {
+            var averages = new float[HoursPerDay];
+            if (totals == null || baselineDays <= 0)
+                return averages;
+
+            int length = totals.Length < HoursPerDay ? totals.Length : HoursPerDay;
+            for (int index = 0; index < length; index++)
+                averages[index] = (float)totals[index] / baselineDays;
+
+            return averages;
+        }
+
+        private static void AddHourlyData(int[] destination, int[] source)
+        {
+            if (destination == null || source == null)
+                return;
+
+            int length = destination.Length < source.Length ? destination.Length : source.Length;
+            if (length > HoursPerDay)
+                length = HoursPerDay;
+
+            for (int index = 0; index < length; index++)
+                destination[index] += source[index];
+        }
+
+        private static void CopyHourlyData(int[] source, int[] destination)
+        {
+            if (source == null || destination == null)
+                return;
+
+            int length = source.Length < destination.Length ? source.Length : destination.Length;
+            if (length > HoursPerDay)
+                length = HoursPerDay;
+
+            for (int index = 0; index < length; index++)
+                destination[index] = source[index];
+        }
+
+        private static void ClearHourlyData(int[] values)
+        {
+            if (values == null)
+                return;
+
+            int length = values.Length < HoursPerDay ? values.Length : HoursPerDay;
+            for (int index = 0; index < length; index++)
+                values[index] = 0;
+        }
+
+        private static void WriteHourlyArray<TWriter>(TWriter writer, int[] values) where TWriter : IWriter
+        {
+            if (values == null)
+                values = CreateHourlyBuckets();
+
+            for (int index = 0; index < HoursPerDay; index++)
+            {
+                int value = index < values.Length ? values[index] : 0;
+                writer.Write(value);
+            }
+        }
+
+        private static void ReadHourlyArray<TReader>(TReader reader, int[] target) where TReader : IReader
+        {
+            for (int index = 0; index < HoursPerDay; index++)
+            {
+                reader.Read(out int value);
+                if (target != null && index < target.Length)
+                    target[index] = value;
+            }
+        }
+
+        private static void SkipHourlyArray<TReader>(TReader reader) where TReader : IReader
+        {
+            for (int index = 0; index < HoursPerDay; index++)
+                reader.Read(out int _);
         }
 
         private void IncrementVersion()

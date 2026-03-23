@@ -17,8 +17,8 @@ This repository contains the source code for the published mod.
 - Charges private cars travelling inside active ULEZ districts
 - Charges each vehicle at most once per in-game day
 - Tracks district traffic before and after ULEZ is enabled
-- Shows live district and citywide ULEZ stats in the custom district panel
-- Reports district trends over time through daily summaries
+- Shows a plain-English district dashboard with hourly traffic graphs and money totals
+- Reports district trends over time through simpler daily summaries
 
 ## How To Use
 
@@ -36,8 +36,9 @@ ULEZ currently discourages driving by making it more expensive, not by forcing a
 - Drivers that keep using ULEZ districts pay recurring charges
 - Over time, that makes private-car travel less attractive financially
 - If you let a district run before enabling ULEZ, the mod can compare later traffic against that district's own pre-ULEZ baseline
-- The district panel shows live traffic, charges, revenue, and citywide totals without waiting for the daily report
-- The daily report shows whether private-car traffic in a district is rising, falling, or staying steady compared with its pre-ULEZ baseline when available
+- The district panel shows live traffic, money, and citywide totals without waiting for the daily report
+- The district panel also shows an hourly traffic graph comparing today, the district's pre-ULEZ pattern, and the rest of the tracked city
+- The daily report explains whether traffic in a district is rising, falling, or staying steady compared with its pre-ULEZ baseline when available
 - The report also shows how much traffic and revenue the district and the whole ULEZ system have generated over time
 
 ## Settings
@@ -57,9 +58,9 @@ All settings are available in Options under ULEZ.
 Daily reports are meant to help you judge whether ULEZ is working.
 
 - Daily money collected
-- Number of observed private-car trips and number of chargeable trips
+- Number of cars seen and number of cars charged
 - Most active ULEZ district that day
-- Whether private-car traffic in that district is up, down, or stable compared with its pre-ULEZ baseline when available
+- Whether traffic in that district is up, down, or stable compared with its pre-ULEZ baseline when available
 - Lifetime traffic, money, and charges generated in that district and across the full ULEZ system
 
 ## District Panel
@@ -67,9 +68,10 @@ Daily reports are meant to help you judge whether ULEZ is working.
 When you select a district, the custom ULEZ panel shows:
 
 - Whether ULEZ is active in that district
-- Today, last full day, and lifetime traffic for that district
-- Today, last full day, and lifetime revenue and charges for that district
-- A color-coded trend note showing whether traffic is down, up, or broadly steady versus baseline
+- Average cars per hour today
+- Money collected today and over the lifetime of the district
+- A plain-English traffic change card explaining whether car traffic is lower, higher, or broadly unchanged versus before ULEZ
+- An hourly traffic graph comparing today, the district's pre-ULEZ pattern, and the rest of the tracked city
 - Citywide ULEZ totals so you can compare the district against the wider network
 
 If a district has not been watched before ULEZ is enabled, it will still work normally, but the trend note stays neutral until enough baseline data exists.

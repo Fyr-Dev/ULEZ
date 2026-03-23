@@ -30,6 +30,9 @@
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModsPath)" />
     <Copy SourceFiles="$(TargetDir)$(TargetName).pdb" DestinationFolder="$(ModsPath)" Condition="Exists('$(TargetDir)$(TargetName).pdb')" />
   </Target>
+  <ItemGroup>
+    <None Include=".github\copilot-instructions.md" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- Game Core -->

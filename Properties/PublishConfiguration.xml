@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Publish>
-  <ModId Value="" />
+  <ModId Value="138746" />
   <DisplayName Value="ULEZ - Ultra Low Emission Zone" />
   <ShortDescription Value="Per-district private-car charging with live district stats, pre-ULEZ traffic baselines, and optional CustomChirps support." />
   <LongDescription Value="ULEZ adds district-based road charging to Cities: Skylines II. Enable ULEZ per district, charge private cars inside active zones, and track traffic and revenue over time.&#10;&#10;Features:&#10;• District-by-district ULEZ activation&#10;• Live district and citywide stats in the custom panel&#10;• Pre-ULEZ district baseline tracking&#10;• Daily summaries with traffic trends and revenue totals&#10;• Optional CustomChirps support&#10;&#10;How to use:&#10;1. Create and select a district.&#10;2. Leave ULEZ off for a while if you want a pre-ULEZ traffic baseline.&#10;3. Enable ULEZ in the custom ULEZ panel.&#10;4. Let traffic run normally and review the panel stats.&#10;&#10;Settings include Daily Charge, Charge Multiplier, Vehicle Scan Budget, and Debug Logging.&#10;&#10;This release adds true pre-ULEZ baseline tracking, live panel stats, color-coded trend cues, richer daily reports, and save compatibility for older ULEZ installs." />

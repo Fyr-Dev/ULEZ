@@ -84,8 +84,8 @@ namespace ULEZ.Systems
 
             string zoneDesc = zoneCount == 1 ? "1 active ULEZ district" : $"{zoneCount} active ULEZ districts";
             string headline = _currentDayCharges > 0
-                ? $"ULEZ Daily Report: £{_currentDayRevenue:N0} collected from {_currentDayCharges:N0} charge(s) across {zoneDesc}."
-                : $"ULEZ Daily Report: No chargeable private-car traffic recorded across {zoneDesc} today.";
+                ? $"ULEZ update: £{_currentDayRevenue:N0} collected today from {_currentDayCharges:N0} charged cars across {zoneDesc}."
+                : $"ULEZ update: no charges were collected today across {zoneDesc}.";
 
             string districtTrend = BuildDistrictTrendText();
             string lifetimeSummary = BuildLifetimeSummaryText();
@@ -113,20 +113,23 @@ namespace ULEZ.Systems
 
         private string BuildDistrictTrendText()
         {
+            ULEZPolicySystem.SystemReportSnapshot systemReport = _policySystem.GetSystemReport();
             if (!_policySystem.TryGetTopDistrictReport(out ULEZPolicySystem.DistrictReportSnapshot report))
-                return "Traffic proxy remains low in the currently enabled districts.";
+                return systemReport.CurrentDayTraffic > 0
+                    ? $"Tracked districts saw {systemReport.CurrentDayTraffic:N0} cars today."
+                    : "Tracked districts stayed quiet today.";
 
             string districtName = GetDistrictName(report.District);
             string priorComparison;
             if (report.BaselineDays <= 0)
             {
-                priorComparison = "No pre-ULEZ baseline is available for that district yet.";
+                priorComparison = "We are still collecting before-ULEZ traffic for that district.";
             }
             else if (report.BaselineAverageTraffic <= 0.01f)
             {
                 priorComparison = report.LastDayTraffic > 0
-                    ? "Private-car traffic is above its pre-ULEZ baseline."
-                    : "Private-car traffic remains near zero versus its pre-ULEZ baseline.";
+                    ? "Traffic there is above its old pre-ULEZ level."
+                    : "Traffic there is still close to its old near-zero level.";
             }
             else
             {
@@ -134,14 +137,18 @@ namespace ULEZ.Systems
                 int roundedPercent = (int)System.Math.Round(System.Math.Abs(deltaPercent), System.MidpointRounding.AwayFromZero);
 
                 if (deltaPercent <= -10f)
-                    priorComparison = $"Private-car traffic is down {roundedPercent}% versus its pre-ULEZ baseline.";
+                    priorComparison = $"Traffic there was {roundedPercent}% lower than before ULEZ.";
                 else if (deltaPercent >= 10f)
-                    priorComparison = $"Private-car traffic is up {roundedPercent}% versus its pre-ULEZ baseline.";
+                    priorComparison = $"Traffic there was {roundedPercent}% higher than before ULEZ.";
                 else
-                    priorComparison = "Private-car traffic is broadly steady versus its pre-ULEZ baseline.";
+                    priorComparison = "Traffic there stayed close to the pre-ULEZ average.";
             }
 
-            return $"Most active district today: {districtName} with {report.LastDayTraffic:N0} observed private-car pass(es), {report.LastDayCharges:N0} charge(s), and £{report.LastDayRevenue:N0}. {priorComparison}";
+            int trafficShare = systemReport.LastDayTraffic > 0
+                ? (int)System.Math.Round(report.LastDayTraffic * 100f / systemReport.LastDayTraffic, System.MidpointRounding.AwayFromZero)
+                : 0;
+
+            return $"{districtName} was the busiest ULEZ district today with {report.LastDayTraffic:N0} cars seen, £{report.LastDayRevenue:N0} collected, and {report.LastDayCharges:N0} charged cars. {priorComparison} That was {trafficShare:N0}% of all tracked district traffic today.";
         }
 
         private string BuildLifetimeSummaryText()
@@ -153,10 +160,10 @@ namespace ULEZ.Systems
             if (_policySystem.TryGetTopDistrictReport(out ULEZPolicySystem.DistrictReportSnapshot report))
             {
                 string districtName = GetDistrictName(report.District);
-                return $"{districtName} has seen {report.LifetimeTraffic:N0} private-car pass(es) overall and generated £{report.LifetimeRevenue:N0} from {report.LifetimeCharges:N0} charge(s); the whole system has seen {lifetimeTraffic:N0} pass(es) and generated £{lifetimeRevenue:N0} from {lifetimeCharges:N0} charge(s).";
+                return $"Since tracking began, {districtName} has seen {report.LifetimeTraffic:N0} cars and collected £{report.LifetimeRevenue:N0} from {report.LifetimeCharges:N0} charged cars. Across the whole system, ULEZ has seen {lifetimeTraffic:N0} cars and collected £{lifetimeRevenue:N0} from {lifetimeCharges:N0} charged cars.";
             }
 
-            return $"System total since rollout: {lifetimeTraffic:N0} private-car pass(es), £{lifetimeRevenue:N0}, and {lifetimeCharges:N0} charge(s).";
+            return $"System total since rollout: {lifetimeTraffic:N0} cars tracked, £{lifetimeRevenue:N0} collected, and {lifetimeCharges:N0} charged cars.";
         }
 
         private string GetDistrictName(Entity district)
