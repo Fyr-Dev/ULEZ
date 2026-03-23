@@ -1,0 +1,25 @@
+# Build outputs
+bin/
+obj/
+*.dll
+*.pdb
+*.exe
+
+# IDE files
+.vs/
+*.user
+*.suo
+*.csproj.user
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Rider
+.idea/
+
+# Mod output (built DLL - use build to generate)
+dist/
+
+# Local tool/cache folders
+Library/
